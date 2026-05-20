@@ -8,8 +8,6 @@ import java.util.List;
 
 @Repository
 public interface ShowImageRepository extends JpaRepository<ShowImage, Long> {
-
     List<ShowImage> findByShowId(Long showId);
-
     void deleteByShowId(Long showId);
 }

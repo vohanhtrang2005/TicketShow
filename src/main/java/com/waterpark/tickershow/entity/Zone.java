@@ -34,10 +34,17 @@ public class Zone {
     @Column(nullable = false)
     private Integer capacity;
 
-    // Giá vé của zone
-    @Column(nullable = false, precision = 15, scale = 2)
+    /**
+     * Giá mặc định của zone (base price).
+     * Có thể bị override trong từng Schedule thông qua ScheduleZonePrice.
+     * Với show FREE: price = 0 (set tự động).
+     */
+    @Column(name = "default_price", nullable = false, precision = 15, scale = 2)
     @Builder.Default
-    private BigDecimal price = BigDecimal.ZERO;
+    private BigDecimal defaultPrice = BigDecimal.ZERO;
+
+    @Column(columnDefinition = "TEXT")
+    private String description;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -45,7 +52,12 @@ public class Zone {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // Back-references: tránh JSON recursion
+    // Back-references
+    @JsonIgnore
+    @OneToMany(mappedBy = "zone", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<ScheduleZonePrice> schedulePrices = new ArrayList<>();
+
     @JsonIgnore
     @OneToMany(mappedBy = "zone")
     @Builder.Default

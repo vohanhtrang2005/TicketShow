@@ -31,22 +31,22 @@ public class Show {
     /**
      * Vòng đời trạng thái show:
      *
-     * [Operator tạo]
+     * [Operator tạo bản nháp]
      *       ↓
-     * PENDING_APPROVAL
-     *       ↓           ↘
-     * (Manager duyệt)  (Manager từ chối + rejectionReason)
-     *       ↓                    ↓
-     *   APPROVED             REJECTED
-     *       ↓
-     * (Manager publish)
-     *       ↓
-     *   PUBLISHED  ← khách hàng thấy show
+     *     DRAFT  ──(submit)──→  PENDING_APPROVAL
+     *                                ↓           ↘
+     *                    (Manager duyệt)    (Manager từ chối + rejectionReason)
+     *                                ↓                    ↓
+     *                           APPROVED          REVISION_REQUIRED
+     *                                ↓                    ↓ (operator chỉnh sửa & submit lại)
+     *                       (Manager publish)      PENDING_APPROVAL
+     *                                ↓
+     *                           PUBLISHED  ← khách hàng thấy show
      */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Builder.Default
-    private ShowStatus status = ShowStatus.PENDING_APPROVAL;
+    private ShowStatus status = ShowStatus.DRAFT;
 
     // ManyToOne: loại show (FREE_NO_REGISTRATION / FREE_WITH_REGISTRATION / PAID)
     @ManyToOne(fetch = FetchType.EAGER)

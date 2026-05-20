@@ -5,9 +5,7 @@ import com.waterpark.tickershow.entity.ShowType;
 import com.waterpark.tickershow.repository.ShowTypeRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -19,7 +17,7 @@ public class ShowTypeController {
     private final ShowTypeRepository showTypeRepository;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<ShowType>>> getAllShowTypes() {
+    public ResponseEntity<ApiResponse<List<ShowType>>> getShowTypes() {
         return ResponseEntity.ok(ApiResponse.success(showTypeRepository.findAll()));
     }
 }

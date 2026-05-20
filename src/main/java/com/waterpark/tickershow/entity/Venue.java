@@ -27,6 +27,9 @@ public class Venue {
     @Column(columnDefinition = "TEXT")
     private String location;
 
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
     @Column(nullable = false)
     private Integer capacity;
 
@@ -41,9 +44,9 @@ public class Venue {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // Back-references: tránh JSON recursion
+    // Back-references
     @JsonIgnore
-    @OneToMany(mappedBy = "venue", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "venue", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<Zone> zones = new ArrayList<>();
 
