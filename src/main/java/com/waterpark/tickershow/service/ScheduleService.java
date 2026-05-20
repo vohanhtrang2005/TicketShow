@@ -136,6 +136,7 @@ public class ScheduleService {
     public List<ScheduleResponse> getPendingSchedules() {
         return scheduleRepository.findAll().stream()
                 .filter(s -> s.getApprovalStatus() == ScheduleApprovalStatus.PENDING_APPROVAL)
+                .filter(s -> s.getShow().getStatus() == com.waterpark.tickershow.enums.ShowStatus.APPROVED)
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
