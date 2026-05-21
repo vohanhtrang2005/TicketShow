@@ -71,7 +71,7 @@ public class VenueService {
         }
         if (req.getLocation() != null)    venue.setLocation(req.getLocation());
         if (req.getDescription() != null) venue.setDescription(req.getDescription());
-        if (req.getCapacity() != null)    venue.setCapacity(req.getCapacity());
+        venue.setCapacity(req.getCapacity());
         if (req.getActive() != null)      venue.setActive(req.getActive());
 
         return toResponse(venueRepository.save(venue), true);

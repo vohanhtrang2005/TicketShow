@@ -30,7 +30,7 @@ public class Venue {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Column(nullable = false)
+    @Column
     private Integer capacity;
 
     // true = active, false = inactive/maintenance
