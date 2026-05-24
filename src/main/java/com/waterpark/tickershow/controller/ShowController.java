@@ -5,9 +5,16 @@ import com.waterpark.tickershow.dto.request.ReviewShowRequest;
 import com.waterpark.tickershow.dto.request.UpdateShowRequest;
 import com.waterpark.tickershow.dto.response.ApiResponse;
 import com.waterpark.tickershow.dto.response.ShowResponse;
+import com.waterpark.tickershow.entity.Show;
 import com.waterpark.tickershow.service.ShowService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+
+import com.turkraft.springfilter.boot.Filter;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -46,12 +53,16 @@ public class ShowController {
     // ─── Operator endpoints ───────────────────────────────────────────────────
 
     /** Operator: list own shows */
-    @GetMapping("/my")
-    @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
-    public ResponseEntity<ApiResponse<List<ShowResponse>>> getMyShows() {
-        return ResponseEntity.ok(ApiResponse.success(showService.getMyShows()));
-    }
-
+  @GetMapping("/my")
+@PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")
+public ResponseEntity<ApiResponse<Page<ShowResponse>>> getMyShows(
+        @Filter Specification<Show> spec,
+        Pageable pageable
+) {
+    return ResponseEntity.ok(
+            ApiResponse.success(showService.getMyShows(spec, pageable))
+    );
+}
     /** Operator: create a new show (draft or submit) */
     @PostMapping
     @PreAuthorize("hasAnyRole('OPERATOR','ADMIN')")

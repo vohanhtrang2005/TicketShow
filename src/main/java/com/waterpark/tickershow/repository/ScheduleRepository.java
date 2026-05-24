@@ -3,6 +3,7 @@ package com.waterpark.tickershow.repository;
 import com.waterpark.tickershow.entity.Schedule;
 import com.waterpark.tickershow.enums.ScheduleStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;

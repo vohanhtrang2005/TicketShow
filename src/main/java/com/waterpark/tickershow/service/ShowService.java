@@ -15,6 +15,10 @@ import com.waterpark.tickershow.repository.ShowRepository;
 import com.waterpark.tickershow.repository.ShowTypeRepository;
 import com.waterpark.tickershow.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,11 +58,18 @@ public class ShowService {
 
     // ─── Operator: manage own shows ───────────────────────────────────────────
 
-    public List<ShowResponse> getMyShows() {
-        Long userId = getCurrentUserId();
-        return showRepository.findByCreatedById(userId)
-                .stream().map(s -> toResponse(s, false)).collect(Collectors.toList());
-    }
+public Page<ShowResponse> getMyShows(Specification<Show> spec, Pageable pageable) {
+    Long userId = getCurrentUserId();
+
+    Specification<Show> ownerSpec = (root, query, criteriaBuilder) ->
+            criteriaBuilder.equal(root.get("createdBy").get("id"), userId);
+
+    //Specification<Show> finalSpec = ownerSpec.and(spec);
+    Specification<Show> finalSpec = Specification.where(ownerSpec).and(spec);
+
+    return showRepository.findAll(finalSpec, pageable)
+            .map(show -> toResponse(show, false));
+}
 
     @Transactional
     public ShowResponse createShow(CreateShowRequest req) {
@@ -165,13 +176,23 @@ public class ShowService {
         if (req.isApproved()) {
             show.setStatus(ShowStatus.APPROVED);
             show.setRejectionReason(null);
-        } else {
-            if (req.getRejectionReason() == null || req.getRejectionReason().isBlank()) {
+        }
+        else {
+
+             if (req.getRejectionReason() == null || req.getRejectionReason().isBlank()) {
                 throw new RuntimeException("Phải cung cấp lý do từ chối");
             }
+                show.setRejectionReason(req.getRejectionReason());
+        // reject vĩnh viễn
+    if (req.isRejected()) {
+
+        show.setStatus(ShowStatus.REJECTED);}
+
+        else {
+           
             show.setStatus(ShowStatus.REVISION_REQUIRED);
-            show.setRejectionReason(req.getRejectionReason());
-        }
+        
+        } }
 
         return toResponse(showRepository.save(show), true);
     }

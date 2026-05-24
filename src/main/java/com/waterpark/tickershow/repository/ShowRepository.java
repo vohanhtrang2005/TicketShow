@@ -3,6 +3,7 @@ package com.waterpark.tickershow.repository;
 import com.waterpark.tickershow.entity.Show;
 import com.waterpark.tickershow.enums.ShowStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -10,7 +11,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 @Repository
-public interface ShowRepository extends JpaRepository<Show, Long> {
+public interface ShowRepository extends JpaRepository<Show, Long>, JpaSpecificationExecutor<Show> {
 
     // ─── Customer: Xem danh sách show công khai ──────────────────────────────
 

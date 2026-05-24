@@ -5,5 +5,6 @@ public enum ShowStatus {
     PENDING_APPROVAL,    // Operator submits for review
     APPROVED,            // Manager approves
     REVISION_REQUIRED,   // Manager rejects → operator must revise
+    REJECTED,            // Manager rejects → operator can choose to delete or revise
     PUBLISHED            // Manager publishes (visible to customers)
 }

@@ -56,6 +56,10 @@ public class ScheduleService {
     @Transactional
     public ScheduleResponse createSchedule(CreateScheduleRequest req) {
         Show show = findShow(req.getShowId());
+        if (show.getStatus() != com.waterpark.tickershow.enums.ShowStatus.APPROVED &&
+                show.getStatus() != com.waterpark.tickershow.enums.ShowStatus.PUBLISHED) {
+            throw new RuntimeException("Chỉ có thể tạo lịch trình cho show đã được phê duyệt");
+        }
         Venue venue = findVenue(req.getVenueId());
         validateTimeRange(req.getStartTime(), req.getEndTime());
         checkVenueConflict(venue.getId(), req.getStartTime(), req.getEndTime(), 0L);
