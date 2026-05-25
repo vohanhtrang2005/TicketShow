@@ -4,11 +4,22 @@ import com.waterpark.tickershow.dto.request.CreateScheduleRequest;
 import com.waterpark.tickershow.dto.request.ReviewScheduleRequest;
 import com.waterpark.tickershow.dto.request.UpdateScheduleRequest;
 import com.waterpark.tickershow.dto.response.ScheduleResponse;
-import com.waterpark.tickershow.entity.*;
+import com.waterpark.tickershow.entity.Schedule;
+import com.waterpark.tickershow.entity.ScheduleZonePrice;
+import com.waterpark.tickershow.entity.Show;
+import com.waterpark.tickershow.entity.User;
+import com.waterpark.tickershow.entity.Venue;
+import com.waterpark.tickershow.entity.Zone;
 import com.waterpark.tickershow.enums.ScheduleApprovalStatus;
 import com.waterpark.tickershow.enums.ScheduleStatus;
+import com.waterpark.tickershow.enums.ShowStatus;
 import com.waterpark.tickershow.enums.ShowTypeName;
-import com.waterpark.tickershow.repository.*;
+import com.waterpark.tickershow.repository.ScheduleRepository;
+import com.waterpark.tickershow.repository.ScheduleZonePriceRepository;
+import com.waterpark.tickershow.repository.ShowRepository;
+import com.waterpark.tickershow.repository.UserRepository;
+import com.waterpark.tickershow.repository.VenueRepository;
+import com.waterpark.tickershow.repository.ZoneRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -16,7 +27,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -31,8 +41,6 @@ public class ScheduleService {
     private final VenueRepository venueRepository;
     private final ZoneRepository zoneRepository;
     private final UserRepository userRepository;
-
-    // ─── Public: view available schedules ────────────────────────────────────
 
     public List<ScheduleResponse> getSchedulesByShow(Long showId) {
         return scheduleRepository.findByShowId(showId)
@@ -51,18 +59,19 @@ public class ScheduleService {
         return toResponse(findById(id));
     }
 
-    // ─── Operator: create / update / cancel schedules ────────────────────────
-
     @Transactional
     public ScheduleResponse createSchedule(CreateScheduleRequest req) {
         Show show = findShow(req.getShowId());
-        if (show.getStatus() != com.waterpark.tickershow.enums.ShowStatus.APPROVED &&
-                show.getStatus() != com.waterpark.tickershow.enums.ShowStatus.PUBLISHED) {
-            throw new RuntimeException("Chỉ có thể tạo lịch trình cho show đã được phê duyệt");
-        }
+        validateOperatorOwnsShow(show);
+        validateCanCreateSchedule(show);
+
         Venue venue = findVenue(req.getVenueId());
         validateTimeRange(req.getStartTime(), req.getEndTime());
         checkVenueConflict(venue.getId(), req.getStartTime(), req.getEndTime(), 0L);
+
+        ScheduleApprovalStatus approvalStatus = isShowPackageEditable(show)
+                ? ScheduleApprovalStatus.DRAFT
+                : ScheduleApprovalStatus.PENDING_APPROVAL;
 
         Schedule schedule = Schedule.builder()
                 .show(show)
@@ -70,13 +79,11 @@ public class ScheduleService {
                 .startTime(req.getStartTime())
                 .endTime(req.getEndTime())
                 .notes(req.getNotes())
-                .approvalStatus(ScheduleApprovalStatus.PENDING_APPROVAL)
+                .approvalStatus(approvalStatus)
                 .status(ScheduleStatus.UPCOMING)
                 .build();
 
         schedule = scheduleRepository.save(schedule);
-
-        // Set zone prices
         setZonePrices(schedule, show, req.getZonePrices(), venue);
 
         return toResponse(schedule);
@@ -85,12 +92,16 @@ public class ScheduleService {
     @Transactional
     public ScheduleResponse updateSchedule(Long id, UpdateScheduleRequest req) {
         Schedule schedule = findById(id);
+        validateOperatorOwnsShow(schedule.getShow());
 
         if (schedule.getApprovalStatus() == ScheduleApprovalStatus.APPROVED) {
-            throw new RuntimeException("Không thể chỉnh sửa schedule đã được duyệt. Hãy hủy và tạo mới.");
+            throw new RuntimeException("Khong the chinh sua schedule da duoc duyet. Hay huy va tao moi.");
         }
         if (schedule.getStatus() != ScheduleStatus.UPCOMING) {
-            throw new RuntimeException("Chỉ có thể chỉnh sửa schedule UPCOMING");
+            throw new RuntimeException("Chi co the chinh sua schedule UPCOMING");
+        }
+        if (schedule.getShow().getStatus() == ShowStatus.PENDING_APPROVAL) {
+            throw new RuntimeException("Khong the chinh sua schedule khi show dang cho duyet");
         }
 
         Venue venue = schedule.getVenue();
@@ -100,9 +111,9 @@ public class ScheduleService {
         }
 
         LocalDateTime start = req.getStartTime() != null ? req.getStartTime() : schedule.getStartTime();
-        LocalDateTime end   = req.getEndTime()   != null ? req.getEndTime()   : schedule.getEndTime();
+        LocalDateTime end = req.getEndTime() != null ? req.getEndTime() : schedule.getEndTime();
 
-        if (req.getStartTime() != null || req.getEndTime() != null) {
+        if (req.getStartTime() != null || req.getEndTime() != null || req.getVenueId() != null) {
             validateTimeRange(start, end);
             checkVenueConflict(venue.getId(), start, end, schedule.getId());
             schedule.setStartTime(start);
@@ -111,8 +122,9 @@ public class ScheduleService {
 
         if (req.getNotes() != null) schedule.setNotes(req.getNotes());
 
-        // Reset to pending when modified
-        schedule.setApprovalStatus(ScheduleApprovalStatus.PENDING_APPROVAL);
+        schedule.setApprovalStatus(isShowPackageEditable(schedule.getShow())
+                ? ScheduleApprovalStatus.DRAFT
+                : ScheduleApprovalStatus.PENDING_APPROVAL);
         schedule.setApprovedBy(null);
         schedule.setApprovedAt(null);
         schedule.setApprovalNote(null);
@@ -129,18 +141,17 @@ public class ScheduleService {
     public ScheduleResponse cancelSchedule(Long id) {
         Schedule schedule = findById(id);
         if (schedule.getStatus() == ScheduleStatus.FINISHED) {
-            throw new RuntimeException("Không thể hủy schedule đã kết thúc");
+            throw new RuntimeException("Khong the huy schedule da ket thuc");
         }
         schedule.setStatus(ScheduleStatus.CANCELLED);
         return toResponse(scheduleRepository.save(schedule));
     }
 
-    // ─── Manager: approve / reject individual schedules ──────────────────────
-
     public List<ScheduleResponse> getPendingSchedules() {
         return scheduleRepository.findAll().stream()
                 .filter(s -> s.getApprovalStatus() == ScheduleApprovalStatus.PENDING_APPROVAL)
-                .filter(s -> s.getShow().getStatus() == com.waterpark.tickershow.enums.ShowStatus.APPROVED)
+                .filter(s -> s.getShow().getStatus() == ShowStatus.APPROVED
+                        || s.getShow().getStatus() == ShowStatus.PUBLISHED)
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
@@ -158,7 +169,11 @@ public class ScheduleService {
         User manager = getCurrentUser();
 
         if (schedule.getApprovalStatus() != ScheduleApprovalStatus.PENDING_APPROVAL) {
-            throw new RuntimeException("Schedule không ở trạng thái PENDING_APPROVAL");
+            throw new RuntimeException("Schedule khong o trang thai PENDING_APPROVAL");
+        }
+        if (schedule.getShow().getStatus() != ShowStatus.APPROVED
+                && schedule.getShow().getStatus() != ShowStatus.PUBLISHED) {
+            throw new RuntimeException("Schedule moi chi duoc duyet rieng sau khi show da duoc duyet");
         }
 
         schedule.setApprovedBy(manager);
@@ -169,15 +184,13 @@ public class ScheduleService {
             schedule.setApprovalStatus(ScheduleApprovalStatus.APPROVED);
         } else {
             if (req.getNote() == null || req.getNote().isBlank()) {
-                throw new RuntimeException("Phải cung cấp lý do từ chối schedule");
+                throw new RuntimeException("Phai cung cap ly do tu choi schedule");
             }
             schedule.setApprovalStatus(ScheduleApprovalStatus.REJECTED);
         }
 
         return toResponse(scheduleRepository.save(schedule));
     }
-
-    // ─── Auto status update (called by scheduler) ─────────────────────────────
 
     @Transactional
     public void autoUpdateScheduleStatuses() {
@@ -192,8 +205,6 @@ public class ScheduleService {
         scheduleRepository.saveAll(toFinished);
     }
 
-    // ─── Zone price helpers ───────────────────────────────────────────────────
-
     private void setZonePrices(Schedule schedule, Show show,
                                List<CreateScheduleRequest.ZonePriceEntry> entries, Venue venue) {
         boolean isFree = show.getShowType().getName() != ShowTypeName.PAID_WITH_REGISTRATION;
@@ -202,9 +213,9 @@ public class ScheduleService {
         if (entries != null && !entries.isEmpty() && !isFree) {
             for (CreateScheduleRequest.ZonePriceEntry entry : entries) {
                 Zone zone = zoneRepository.findById(entry.getZoneId())
-                        .orElseThrow(() -> new RuntimeException("Zone không tồn tại: " + entry.getZoneId()));
+                        .orElseThrow(() -> new RuntimeException("Zone khong ton tai: " + entry.getZoneId()));
                 if (!zone.getVenue().getId().equals(venue.getId())) {
-                    throw new RuntimeException("Zone " + entry.getZoneId() + " không thuộc venue này");
+                    throw new RuntimeException("Zone " + entry.getZoneId() + " khong thuoc venue nay");
                 }
                 ScheduleZonePrice szp = ScheduleZonePrice.builder()
                         .schedule(schedule)
@@ -214,7 +225,6 @@ public class ScheduleService {
                 scheduleZonePriceRepository.save(szp);
             }
         } else {
-            // Auto-create zone prices for all zones in venue
             for (Zone zone : venueZones) {
                 ScheduleZonePrice szp = ScheduleZonePrice.builder()
                         .schedule(schedule)
@@ -236,14 +246,12 @@ public class ScheduleService {
         }
     }
 
-    // ─── Validators ──────────────────────────────────────────────────────────
-
     private void validateTimeRange(LocalDateTime start, LocalDateTime end) {
         if (!end.isAfter(start)) {
-            throw new RuntimeException("Thời gian kết thúc phải sau thời gian bắt đầu");
+            throw new RuntimeException("Thoi gian ket thuc phai sau thoi gian bat dau");
         }
         if (start.isBefore(LocalDateTime.now())) {
-            throw new RuntimeException("Thời gian bắt đầu phải trong tương lai");
+            throw new RuntimeException("Thoi gian bat dau phai trong tuong lai");
         }
     }
 
@@ -252,35 +260,51 @@ public class ScheduleService {
         if (!conflicts.isEmpty()) {
             Schedule conflict = conflicts.get(0);
             throw new RuntimeException(
-                    "Địa điểm đã có lịch trình xung đột: [" + conflict.getStartTime()
-                            + " → " + conflict.getEndTime() + "] (BR10)");
+                    "Dia diem da co lich trinh xung dot: [" + conflict.getStartTime()
+                            + " -> " + conflict.getEndTime() + "] (BR10)");
         }
     }
 
-    // ─── Finders ─────────────────────────────────────────────────────────────
-
     public Schedule findById(Long id) {
         return scheduleRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy lịch trình với ID: " + id));
+                .orElseThrow(() -> new RuntimeException("Khong tim thay lich trinh voi ID: " + id));
     }
 
     private Show findShow(Long id) {
         return showRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy show với ID: " + id));
+                .orElseThrow(() -> new RuntimeException("Khong tim thay show voi ID: " + id));
     }
 
     private Venue findVenue(Long id) {
         return venueRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy địa điểm với ID: " + id));
+                .orElseThrow(() -> new RuntimeException("Khong tim thay dia diem voi ID: " + id));
     }
 
     private User getCurrentUser() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng"));
+                .orElseThrow(() -> new RuntimeException("Khong tim thay nguoi dung"));
     }
 
-    // ─── Response mapper ─────────────────────────────────────────────────────
+    private void validateOperatorOwnsShow(Show show) {
+        User currentUser = getCurrentUser();
+        if (show.getCreatedBy() == null || !show.getCreatedBy().getId().equals(currentUser.getId())) {
+            throw new RuntimeException("Ban khong co quyen thao tac lich trinh cua show nay");
+        }
+    }
+
+    private void validateCanCreateSchedule(Show show) {
+        if (show.getStatus() == ShowStatus.PENDING_APPROVAL) {
+            throw new RuntimeException("Khong the them lich trinh khi show dang cho duyet");
+        }
+        if (show.getStatus() == ShowStatus.REJECTED) {
+            throw new RuntimeException("Khong the them lich trinh cho show da bi tu choi");
+        }
+    }
+
+    private boolean isShowPackageEditable(Show show) {
+        return show.getStatus() == ShowStatus.DRAFT || show.getStatus() == ShowStatus.REVISION_REQUIRED;
+    }
 
     public ScheduleResponse toResponse(Schedule s) {
         Venue v = s.getVenue();
@@ -293,9 +317,9 @@ public class ScheduleService {
 
         ScheduleResponse.UserInfo approverInfo = s.getApprovedBy() != null
                 ? ScheduleResponse.UserInfo.builder()
-                        .id(s.getApprovedBy().getId())
-                        .fullName(s.getApprovedBy().getFullName())
-                        .build()
+                .id(s.getApprovedBy().getId())
+                .fullName(s.getApprovedBy().getFullName())
+                .build()
                 : null;
 
         List<ScheduleZonePrice> zonePrices = scheduleZonePriceRepository.findByScheduleId(s.getId());

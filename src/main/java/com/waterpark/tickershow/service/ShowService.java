@@ -4,18 +4,18 @@ import com.waterpark.tickershow.dto.request.CreateShowRequest;
 import com.waterpark.tickershow.dto.request.ReviewShowRequest;
 import com.waterpark.tickershow.dto.request.UpdateShowRequest;
 import com.waterpark.tickershow.dto.response.ShowResponse;
+import com.waterpark.tickershow.entity.Schedule;
 import com.waterpark.tickershow.entity.Show;
 import com.waterpark.tickershow.entity.ShowImage;
 import com.waterpark.tickershow.entity.ShowType;
 import com.waterpark.tickershow.entity.User;
+import com.waterpark.tickershow.enums.ScheduleApprovalStatus;
 import com.waterpark.tickershow.enums.ShowStatus;
-import com.waterpark.tickershow.enums.ShowTypeName;
 import com.waterpark.tickershow.repository.ShowImageRepository;
 import com.waterpark.tickershow.repository.ShowRepository;
 import com.waterpark.tickershow.repository.ShowTypeRepository;
 import com.waterpark.tickershow.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -24,7 +24,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -38,8 +37,6 @@ public class ShowService {
     private final ShowImageRepository showImageRepository;
     private final UserRepository userRepository;
 
-    // ─── Public: customer sees published shows ────────────────────────────────
-
     public List<ShowResponse> getPublicShows() {
         return showRepository.findByStatusIn(List.of(ShowStatus.APPROVED, ShowStatus.PUBLISHED))
                 .stream().map(s -> toResponse(s, false)).collect(Collectors.toList());
@@ -52,43 +49,37 @@ public class ShowService {
 
     public List<ShowResponse> searchShows(String keyword) {
         return showRepository.searchByNameAndStatuses(keyword,
-                List.of(ShowStatus.APPROVED, ShowStatus.PUBLISHED))
+                        List.of(ShowStatus.APPROVED, ShowStatus.PUBLISHED))
                 .stream().map(s -> toResponse(s, false)).collect(Collectors.toList());
     }
 
-    // ─── Operator: manage own shows ───────────────────────────────────────────
+    public Page<ShowResponse> getMyShows(Specification<Show> spec, Pageable pageable) {
+        Long userId = getCurrentUserId();
 
-public Page<ShowResponse> getMyShows(Specification<Show> spec, Pageable pageable) {
-    Long userId = getCurrentUserId();
+        Specification<Show> ownerSpec = (root, query, criteriaBuilder) ->
+                criteriaBuilder.equal(root.get("createdBy").get("id"), userId);
 
-    Specification<Show> ownerSpec = (root, query, criteriaBuilder) ->
-            criteriaBuilder.equal(root.get("createdBy").get("id"), userId);
+        Specification<Show> finalSpec = Specification.where(ownerSpec).and(spec);
 
-    //Specification<Show> finalSpec = ownerSpec.and(spec);
-    Specification<Show> finalSpec = Specification.where(ownerSpec).and(spec);
-
-    return showRepository.findAll(finalSpec, pageable)
-            .map(show -> toResponse(show, false));
-}
+        return showRepository.findAll(finalSpec, pageable)
+                .map(show -> toResponse(show, false));
+    }
 
     @Transactional
     public ShowResponse createShow(CreateShowRequest req) {
         User operator = getCurrentUser();
         ShowType showType = findShowType(req.getShowTypeId());
 
-        ShowStatus status = req.isSaveDraft() ? ShowStatus.DRAFT : ShowStatus.PENDING_APPROVAL;
-
         Show show = Show.builder()
                 .name(req.getName())
                 .description(req.getDescription())
                 .showType(showType)
                 .createdBy(operator)
-                .status(status)
+                .status(ShowStatus.DRAFT)
                 .build();
 
         show = showRepository.save(show);
 
-        // Save images
         if (req.getImageUrls() != null && !req.getImageUrls().isEmpty()) {
             saveImages(show, req.getImageUrls());
         }
@@ -102,9 +93,9 @@ public Page<ShowResponse> getMyShows(Specification<Show> spec, Pageable pageable
         validateOperatorOwnsShow(show);
         validateShowEditable(show);
 
-        if (req.getName() != null)        show.setName(req.getName());
+        if (req.getName() != null) show.setName(req.getName());
         if (req.getDescription() != null) show.setDescription(req.getDescription());
-        if (req.getShowTypeId() != null)  show.setShowType(findShowType(req.getShowTypeId()));
+        if (req.getShowTypeId() != null) show.setShowType(findShowType(req.getShowTypeId()));
 
         if (req.getImageUrls() != null) {
             showImageRepository.deleteByShowId(id);
@@ -120,10 +111,26 @@ public Page<ShowResponse> getMyShows(Specification<Show> spec, Pageable pageable
         validateOperatorOwnsShow(show);
 
         if (show.getStatus() != ShowStatus.DRAFT && show.getStatus() != ShowStatus.REVISION_REQUIRED) {
-            throw new RuntimeException("Chỉ có thể submit show ở trạng thái DRAFT hoặc REVISION_REQUIRED");
+            throw new RuntimeException("Chi co the submit show o trang thai DRAFT hoac REVISION_REQUIRED");
+        }
+        if (show.getSchedules().isEmpty()) {
+            throw new RuntimeException("Show phai co it nhat mot lich trinh truoc khi gui duyet");
+        }
+        if (show.getSchedules().stream().anyMatch(s -> s.getStatus().name().equals("CANCELLED"))) {
+            throw new RuntimeException("Show khong the gui duyet neu con lich trinh da huy");
         }
 
+        show.getSchedules().forEach(s -> {
+            if (s.getApprovalStatus() != ScheduleApprovalStatus.APPROVED) {
+                s.setApprovalStatus(ScheduleApprovalStatus.PENDING_APPROVAL);
+                s.setApprovedBy(null);
+                s.setApprovedAt(null);
+                s.setApprovalNote(null);
+            }
+        });
         show.setStatus(ShowStatus.PENDING_APPROVAL);
+        show.setRejectionReason(null);
+
         return toResponse(showRepository.save(show), true);
     }
 
@@ -133,12 +140,12 @@ public Page<ShowResponse> getMyShows(Specification<Show> spec, Pageable pageable
         validateOperatorOwnsShow(show);
 
         if (show.getStatus() != ShowStatus.DRAFT && show.getStatus() != ShowStatus.REVISION_REQUIRED) {
-            throw new RuntimeException("Chỉ có thể lưu nháp show ở trạng thái DRAFT hoặc REVISION_REQUIRED");
+            throw new RuntimeException("Chi co the luu nhap show o trang thai DRAFT hoac REVISION_REQUIRED");
         }
 
-        if (req.getName() != null)        show.setName(req.getName());
+        if (req.getName() != null) show.setName(req.getName());
         if (req.getDescription() != null) show.setDescription(req.getDescription());
-        if (req.getShowTypeId() != null)  show.setShowType(findShowType(req.getShowTypeId()));
+        if (req.getShowTypeId() != null) show.setShowType(findShowType(req.getShowTypeId()));
 
         if (req.getImageUrls() != null) {
             showImageRepository.deleteByShowId(id);
@@ -146,14 +153,21 @@ public Page<ShowResponse> getMyShows(Specification<Show> spec, Pageable pageable
         }
 
         show.setStatus(ShowStatus.DRAFT);
+        show.getSchedules().forEach(s -> {
+            if (s.getApprovalStatus() != ScheduleApprovalStatus.APPROVED) {
+                s.setApprovalStatus(ScheduleApprovalStatus.DRAFT);
+                s.setApprovedBy(null);
+                s.setApprovedAt(null);
+                s.setApprovalNote(null);
+            }
+        });
+
         return toResponse(showRepository.save(show), true);
     }
 
-    // ─── Manager: approve / reject / publish ─────────────────────────────────
-
     public List<ShowResponse> getPendingApprovalShows() {
         return showRepository.findByStatus(ShowStatus.PENDING_APPROVAL)
-                .stream().map(s -> toResponse(s, false)).collect(Collectors.toList());
+                .stream().map(s -> toResponse(s, true)).collect(Collectors.toList());
     }
 
     public List<ShowResponse> getAllShowsForManager() {
@@ -167,7 +181,10 @@ public Page<ShowResponse> getMyShows(Specification<Show> spec, Pageable pageable
         User manager = getCurrentUser();
 
         if (show.getStatus() != ShowStatus.PENDING_APPROVAL) {
-            throw new RuntimeException("Show không ở trạng thái chờ duyệt (PENDING_APPROVAL)");
+            throw new RuntimeException("Show khong o trang thai cho duyet (PENDING_APPROVAL)");
+        }
+        if (show.getSchedules().isEmpty()) {
+            throw new RuntimeException("Khong the duyet show chua co lich trinh");
         }
 
         show.setReviewedBy(manager);
@@ -176,23 +193,21 @@ public Page<ShowResponse> getMyShows(Specification<Show> spec, Pageable pageable
         if (req.isApproved()) {
             show.setStatus(ShowStatus.APPROVED);
             show.setRejectionReason(null);
-        }
-        else {
-
-             if (req.getRejectionReason() == null || req.getRejectionReason().isBlank()) {
-                throw new RuntimeException("Phải cung cấp lý do từ chối");
+            show.getSchedules().forEach(s -> approvePackageSchedule(s, manager));
+        } else {
+            if (req.getRejectionReason() == null || req.getRejectionReason().isBlank()) {
+                throw new RuntimeException("Phai cung cap ly do tu choi");
             }
-                show.setRejectionReason(req.getRejectionReason());
-        // reject vĩnh viễn
-    if (req.isRejected()) {
 
-        show.setStatus(ShowStatus.REJECTED);}
-
-        else {
-           
-            show.setStatus(ShowStatus.REVISION_REQUIRED);
-        
-        } }
+            show.setRejectionReason(req.getRejectionReason());
+            if (req.isRejected()) {
+                show.setStatus(ShowStatus.REJECTED);
+                show.getSchedules().forEach(s -> rejectPackageSchedule(s, manager, req.getRejectionReason()));
+            } else {
+                show.setStatus(ShowStatus.REVISION_REQUIRED);
+                show.getSchedules().forEach(s -> movePackageScheduleBackToDraft(s, req.getRejectionReason()));
+            }
+        }
 
         return toResponse(showRepository.save(show), true);
     }
@@ -202,33 +217,57 @@ public Page<ShowResponse> getMyShows(Specification<Show> spec, Pageable pageable
         Show show = findById(id);
 
         if (show.getStatus() != ShowStatus.APPROVED) {
-            throw new RuntimeException("Chỉ có thể publish show đã được APPROVED");
+            throw new RuntimeException("Chi co the publish show da duoc APPROVED");
         }
         if (show.getSchedules().isEmpty()) {
-            throw new RuntimeException("Show phải có ít nhất một lịch trình trước khi publish (BR09)");
+            throw new RuntimeException("Show phai co it nhat mot lich trinh truoc khi publish");
+        }
+        boolean hasUnapprovedSchedule = show.getSchedules().stream()
+                .anyMatch(s -> s.getApprovalStatus() != ScheduleApprovalStatus.APPROVED);
+        if (hasUnapprovedSchedule) {
+            throw new RuntimeException("Tat ca lich trinh cua show phai duoc duyet truoc khi publish");
         }
 
         show.setStatus(ShowStatus.PUBLISHED);
         return toResponse(showRepository.save(show), true);
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────────────
-
     public Show findById(Long id) {
         return showRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy show với ID: " + id));
+                .orElseThrow(() -> new RuntimeException("Khong tim thay show voi ID: " + id));
+    }
+
+    private void approvePackageSchedule(Schedule schedule, User manager) {
+        schedule.setApprovalStatus(ScheduleApprovalStatus.APPROVED);
+        schedule.setApprovedBy(manager);
+        schedule.setApprovedAt(LocalDateTime.now());
+        schedule.setApprovalNote("Approved with show package");
+    }
+
+    private void rejectPackageSchedule(Schedule schedule, User manager, String reason) {
+        schedule.setApprovalStatus(ScheduleApprovalStatus.REJECTED);
+        schedule.setApprovedBy(manager);
+        schedule.setApprovedAt(LocalDateTime.now());
+        schedule.setApprovalNote(reason);
+    }
+
+    private void movePackageScheduleBackToDraft(Schedule schedule, String reason) {
+        schedule.setApprovalStatus(ScheduleApprovalStatus.DRAFT);
+        schedule.setApprovedBy(null);
+        schedule.setApprovedAt(null);
+        schedule.setApprovalNote(reason);
     }
 
     private void validateOperatorOwnsShow(Show show) {
         Long userId = getCurrentUserId();
         if (!show.getCreatedBy().getId().equals(userId)) {
-            throw new RuntimeException("Bạn không có quyền chỉnh sửa show này");
+            throw new RuntimeException("Ban khong co quyen chinh sua show nay");
         }
     }
 
     private void validateShowEditable(Show show) {
         if (show.getStatus() != ShowStatus.DRAFT && show.getStatus() != ShowStatus.REVISION_REQUIRED) {
-            throw new RuntimeException("Show chỉ có thể chỉnh sửa ở trạng thái DRAFT hoặc REVISION_REQUIRED");
+            throw new RuntimeException("Show chi co the chinh sua o trang thai DRAFT hoac REVISION_REQUIRED");
         }
     }
 
@@ -244,13 +283,13 @@ public Page<ShowResponse> getMyShows(Specification<Show> spec, Pageable pageable
 
     private ShowType findShowType(Long id) {
         return showTypeRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy loại show với ID: " + id));
+                .orElseThrow(() -> new RuntimeException("Khong tim thay loai show voi ID: " + id));
     }
 
     private User getCurrentUser() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng"));
+                .orElseThrow(() -> new RuntimeException("Khong tim thay nguoi dung"));
     }
 
     private Long getCurrentUserId() {
@@ -277,18 +316,18 @@ public Page<ShowResponse> getMyShows(Specification<Show> spec, Pageable pageable
 
         ShowResponse.UserInfo createdByInfo = s.getCreatedBy() != null
                 ? ShowResponse.UserInfo.builder()
-                        .id(s.getCreatedBy().getId())
-                        .fullName(s.getCreatedBy().getFullName())
-                        .email(s.getCreatedBy().getEmail())
-                        .build()
+                .id(s.getCreatedBy().getId())
+                .fullName(s.getCreatedBy().getFullName())
+                .email(s.getCreatedBy().getEmail())
+                .build()
                 : null;
 
         ShowResponse.UserInfo reviewedByInfo = s.getReviewedBy() != null
                 ? ShowResponse.UserInfo.builder()
-                        .id(s.getReviewedBy().getId())
-                        .fullName(s.getReviewedBy().getFullName())
-                        .email(s.getReviewedBy().getEmail())
-                        .build()
+                .id(s.getReviewedBy().getId())
+                .fullName(s.getReviewedBy().getFullName())
+                .email(s.getReviewedBy().getEmail())
+                .build()
                 : null;
 
         return ShowResponse.builder()
