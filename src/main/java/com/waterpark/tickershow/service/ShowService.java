@@ -301,16 +301,30 @@ public class ShowService {
                 .stream().map(ShowImage::getImageUrl).collect(Collectors.toList());
 
         List<ShowResponse.ScheduleSummary> scheduleSummaries = null;
-        if (includeSchedules) {
+                if (includeSchedules) {
             scheduleSummaries = s.getSchedules().stream()
-                    .map(sc -> ShowResponse.ScheduleSummary.builder()
-                            .id(sc.getId())
-                            .venueName(sc.getVenue() != null ? sc.getVenue().getName() : null)
-                            .startTime(sc.getStartTime())
-                            .endTime(sc.getEndTime())
-                            .status(sc.getStatus().name())
-                            .approvalStatus(sc.getApprovalStatus().name())
-                            .build())
+                    .map(sc -> {
+                        // 1. Duyệt qua từng dòng giá (ScheduleZonePrice) của lịch chiếu hiện tại
+                        List<ShowResponse.ZonePriceInfo> zoneInfos = sc.getZonePrices().stream()
+                                .map(zp -> ShowResponse.ZonePriceInfo.builder()
+                                        .zoneId(zp.getZone().getId())
+                                        .zoneName(zp.getZone().getName())
+                                        .price(zp.getPrice() != null ? zp.getPrice().doubleValue() : 0.0)
+                                        .availableCapacity(zp.getZone().getCapacity()) // Tạm lấy max capacity của Zone
+                                        .build())
+                                .collect(Collectors.toList());
+
+                        // 2. Trả về ScheduleSummary đã nhét thêm danh sách giá (zoneInfos)
+                        return ShowResponse.ScheduleSummary.builder()
+                                .id(sc.getId())
+                                .venueName(sc.getVenue() != null ? sc.getVenue().getName() : null)
+                                .startTime(sc.getStartTime())
+                                .endTime(sc.getEndTime())
+                                .status(sc.getStatus().name())
+                                .approvalStatus(sc.getApprovalStatus().name())
+                                .zones(zoneInfos) // <-- Gán danh sách giá vào DTO
+                                .build();
+                    })
                     .collect(Collectors.toList());
         }
 

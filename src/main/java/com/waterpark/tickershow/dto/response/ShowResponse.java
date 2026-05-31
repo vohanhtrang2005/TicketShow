@@ -6,6 +6,8 @@ import lombok.Data;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.waterpark.tickershow.dto.response.ScheduleResponse.ZonePriceInfo;
+
 @Data
 @Builder
 public class ShowResponse {
@@ -39,6 +41,14 @@ public class ShowResponse {
         private String email;
     }
 
+     @Data
+    @Builder
+    public static class ZonePriceInfo {
+        private Long zoneId;
+        private String zoneName;
+        private Double price;
+        private Integer availableCapacity;
+    }
     @Data
     @Builder
     public static class ScheduleSummary {
@@ -48,5 +58,6 @@ public class ShowResponse {
         private LocalDateTime endTime;
         private String status;
         private String approvalStatus;
+        private List<ZonePriceInfo> zones;
     }
 }
