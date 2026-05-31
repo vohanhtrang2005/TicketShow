@@ -2,6 +2,7 @@ package com.waterpark.tickershow.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.waterpark.tickershow.enums.BookingStatus;
+import com.waterpark.tickershow.enums.PaymentStatus;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -23,17 +24,25 @@ public class Booking {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // ManyToOne: nhiều booking của một customer
+    // tài khoản đặt vé / người thanh toán
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "customer_id", nullable = false)
     private User customer;
 
-    // ManyToOne: booking thuộc một schedule
+    // người nhận vé
+    @Column(name = "receiver_name", nullable = false, length = 100)
+    private String receiverName;
+
+    @Column(name = "receiver_email", nullable = false, length = 100)
+    private String receiverEmail;
+
+    @Column(name = "receiver_phone", nullable = false, length = 20)
+    private String receiverPhone;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "schedule_id", nullable = false)
     private Schedule schedule;
 
-    // ManyToOne: booking chọn một zone
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "zone_id", nullable = false)
     private Zone zone;
@@ -52,6 +61,11 @@ public class Booking {
     @Builder.Default
     private BookingStatus status = BookingStatus.PENDING;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_status", nullable = false, length = 20)
+    @Builder.Default
+    private PaymentStatus paymentStatus = PaymentStatus.PENDING;
+
     @Column(name = "expired_at")
     private LocalDateTime expiredAt;
 
@@ -64,7 +78,6 @@ public class Booking {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // Back-references: tránh JSON recursion
     @JsonIgnore
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL)
     @Builder.Default
