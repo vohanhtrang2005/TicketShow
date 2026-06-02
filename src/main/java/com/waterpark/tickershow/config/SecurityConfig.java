@@ -117,7 +117,9 @@ public class SecurityConfig {
                 // ── Role & Permission — ADMIN only ────────────────────────────────
                 .requestMatchers("/roles/**").hasRole("ADMIN")
                 .requestMatchers("/permissions/**").hasRole("ADMIN")
+//
 
+        .requestMatchers(HttpMethod.POST, "/webhooks/sepay").permitAll()
                 // Everything else requires authentication
                 .anyRequest().authenticated()
             )

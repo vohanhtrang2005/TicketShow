@@ -134,20 +134,17 @@ booking.setReceiverPhone(request.getCustomerPhone());
         }
     }
 
-    private String generateQrCodeUrl(Booking booking) {
-        String bankId = "MB";
-        String accountNo = "0987654321";
-        String accountName = "CONGTYTICKETSHOW";
+   private String generateQrCodeUrl(Booking booking) {
+        String bankId = "TPBANK";
+        String accountNo = "22101011205";
+        String accountName = "VO HANH TRANG";
 
-        return "https://img.vietqr.io/image/"
-                + bankId + "-"
-                + accountNo
-                + "-compact2.png?amount="
-                + booking.getTotalAmount()
-                + "&addInfo=TS"
-                + booking.getId()
-                + "&accountName="
-                + accountName;
+       return "https://qr.sepay.vn/img?"
+        + "acc=" + accountNo
+        + "&bank=" + bankId
+        + "&amount=" + booking.getTotalAmount()
+        + "&des=TS" + booking.getId()
+        + "&template=compact";
     }
 
 
