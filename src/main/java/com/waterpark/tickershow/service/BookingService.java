@@ -163,7 +163,7 @@ public BookingResponse findBooking(Long bookingId) {
     booking.setPaymentStatus(PaymentStatus.FAILED);
     Zone zone = booking.getZone();
        zone.setCapacity(booking.getZone().getCapacity() + booking.getQuantity()); 
-
+zoneRepository.save(zone);
         bookingRepository.save(booking);
     }
 

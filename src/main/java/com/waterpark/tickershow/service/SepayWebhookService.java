@@ -15,16 +15,18 @@ import com.waterpark.tickershow.enums.PaymentMethod;
 import com.waterpark.tickershow.enums.PaymentStatus;
 import com.waterpark.tickershow.repository.BookingRepository;
 import com.waterpark.tickershow.repository.PaymentRepository;
-
+import com.waterpark.tickershow.entity.Zone;
+import com.waterpark.tickershow.repository.ZoneRepository;
 import jakarta.transaction.Transactional;
 
 @Service
 public class SepayWebhookService {
-
+private final ZoneRepository zoneRepository;
     private final BookingRepository bookingRepository;
     private final PaymentRepository paymentRepository;
 
-    public SepayWebhookService(BookingRepository bookingRepository, PaymentRepository paymentRepository) {
+    public SepayWebhookService(ZoneRepository zoneRepository, BookingRepository bookingRepository, PaymentRepository paymentRepository) {
+        this.zoneRepository = zoneRepository;
         this.bookingRepository = bookingRepository;
         this.paymentRepository = paymentRepository;
     }
@@ -89,6 +91,11 @@ public class SepayWebhookService {
         if (booking.getExpiredAt() != null && booking.getExpiredAt().isBefore(LocalDateTime.now())) {
             booking.setStatus(BookingStatus.EXPIRED);
             booking.setPaymentStatus(PaymentStatus.FAILED);
+             Zone zone = booking.getZone();
+    if (zone != null) {
+        zone.setCapacity(zone.getCapacity() + booking.getQuantity());
+        zoneRepository.save(zone);
+    }
             bookingRepository.save(booking);
 
             return ApiResponse.error(400, "Booking da het han");
