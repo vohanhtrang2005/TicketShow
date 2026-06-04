@@ -62,7 +62,7 @@ public class SecurityConfig {
 
                 // ── Auth ──────────────────────────────────────────────────────────
                 .requestMatchers("/auth/**").permitAll()
-
+                
                 // ── Show Types (read-only, public) ────────────────────────────────
                 .requestMatchers(HttpMethod.GET, "/show-types").permitAll()
 
@@ -120,7 +120,7 @@ public class SecurityConfig {
 //
 
         .requestMatchers(HttpMethod.POST, "/webhooks/sepay").permitAll()
-                // Everything else requires authentication
+                    // Everything else requires authentication
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

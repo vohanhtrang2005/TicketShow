@@ -134,8 +134,8 @@ booking.setReceiverPhone(request.getCustomerPhone());
         }
     }
 
-   private String generateQrCodeUrl(Booking booking) {
-        String bankId = "TPBANK";
+    private String generateQrCodeUrl(Booking booking) {
+        String bankId = "TPB"; 
         String accountNo = "22101011205";
         String accountName = "VO HANH TRANG";
 

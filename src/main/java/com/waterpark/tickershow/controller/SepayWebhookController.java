@@ -7,23 +7,29 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.waterpark.tickershow.dto.request.SepayWebhookRequest;
+import com.waterpark.tickershow.dto.response.ApiResponse;
+import com.waterpark.tickershow.service.SepayWebhookService;
 
-import java.util.Map;
+
 @RestController
 @RequestMapping("/webhooks/sepay")
 public class SepayWebhookController {
-     @PostMapping
-     
-    public ResponseEntity<Map<String, Object>> receiveWebhook(@RequestBody SepayWebhookRequest request) {
+    
+     private final SepayWebhookService sepayWebhookService;
+    
+    public SepayWebhookController(SepayWebhookService sepayWebhookService) {
+        this.sepayWebhookService = sepayWebhookService;
+    }
 
+@PostMapping
+public ResponseEntity<ApiResponse<Void>> receiveWebhook(@RequestBody SepayWebhookRequest request) {
+    ApiResponse<Void> result = sepayWebhookService.handleWebhook(request);
 
-        System.out.println("SePay webhook payload: " + request);
-    System.out.println("SePay content: " + request.getContent());
-    System.out.println("SePay amount: " + request.getTransferAmount());
-    System.out.println("SePay type: " + request.getTransferType());
-    System.out.println("SePay referenceCode: " + request.getReferenceCode());
+    if (result.getStatusCode() == 200) {
+        return ResponseEntity.ok(result);
+    }
 
-    return ResponseEntity.ok(Map.of("success", true));
+    return ResponseEntity.status(result.getStatusCode()).body(result);
 }
     }
 
