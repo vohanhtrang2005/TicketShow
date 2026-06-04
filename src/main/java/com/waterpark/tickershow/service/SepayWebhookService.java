@@ -21,14 +21,16 @@ import jakarta.transaction.Transactional;
 
 @Service
 public class SepayWebhookService {
+private final BookingService bookingService;
 private final ZoneRepository zoneRepository;
     private final BookingRepository bookingRepository;
     private final PaymentRepository paymentRepository;
 
-    public SepayWebhookService(ZoneRepository zoneRepository, BookingRepository bookingRepository, PaymentRepository paymentRepository) {
+    public SepayWebhookService(ZoneRepository zoneRepository, BookingRepository bookingRepository, PaymentRepository paymentRepository, BookingService bookingService) {
         this.zoneRepository = zoneRepository;
         this.bookingRepository = bookingRepository;
         this.paymentRepository = paymentRepository;
+        this.bookingService = bookingService;
     }
 
     private Long extractBookingId(String content) {
@@ -113,6 +115,7 @@ private final ZoneRepository zoneRepository;
         booking.setStatus(BookingStatus.CONFIRMED);
         booking.setPaymentStatus(PaymentStatus.SUCCESS);
         bookingRepository.save(booking);
+        bookingService.generateTickets(booking);
 
         Payment payment = new Payment();
         payment.setBooking(booking);

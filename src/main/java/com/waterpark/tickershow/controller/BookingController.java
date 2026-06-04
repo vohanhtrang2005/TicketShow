@@ -35,4 +35,9 @@ public class BookingController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/{bookingId}/tickets")
+public ResponseEntity<?> getTickets(@PathVariable Long bookingId) {
+    return ResponseEntity.ok(bookingService.getTicketsByBookingId(bookingId));
+}
+
 }

@@ -9,21 +9,27 @@ import org.springframework.stereotype.Service;
 
 import com.waterpark.tickershow.dto.request.BookingRequest;
 import com.waterpark.tickershow.dto.response.BookingResponse;
+import com.waterpark.tickershow.dto.response.TicketResponse;
 import com.waterpark.tickershow.entity.Booking;
 import com.waterpark.tickershow.entity.Schedule;
 import com.waterpark.tickershow.entity.ScheduleZonePrice;
+import com.waterpark.tickershow.entity.Ticket;
 import com.waterpark.tickershow.entity.User;
 import com.waterpark.tickershow.entity.Zone;
 import com.waterpark.tickershow.enums.BookingStatus;
 import com.waterpark.tickershow.enums.PaymentStatus;
+import com.waterpark.tickershow.enums.TicketStatus;
 import com.waterpark.tickershow.repository.BookingRepository;
 import com.waterpark.tickershow.repository.ScheduleRepository;
 import com.waterpark.tickershow.repository.ScheduleZonePriceRepository;
+import com.waterpark.tickershow.repository.TicketRepository;
 import com.waterpark.tickershow.repository.UserRepository;
 import com.waterpark.tickershow.repository.ZoneRepository;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
 
 @Service
 public class BookingService {
@@ -33,18 +39,21 @@ public class BookingService {
     private final ZoneRepository zoneRepository;
 private final ScheduleZonePriceRepository scheduleZonePriceRepository;
 private final UserRepository userRepository;
+private final TicketRepository ticketRepository;
     public BookingService(
             BookingRepository bookingRepository,
             ScheduleRepository scheduleRepository,
             ZoneRepository zoneRepository,
             ScheduleZonePriceRepository scheduleZonePriceRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            TicketRepository ticketRepository
     ) {
         this.bookingRepository = bookingRepository;
         this.scheduleRepository = scheduleRepository;
         this.zoneRepository = zoneRepository;
         this.scheduleZonePriceRepository = scheduleZonePriceRepository;
         this.userRepository = userRepository;
+        this.ticketRepository = ticketRepository;
     }
 
     @Transactional
@@ -176,4 +185,36 @@ zoneRepository.save(zone);
                generateQrCodeUrl(booking)
     );
 }
+
+
+@Transactional
+public void generateTickets(Booking booking) {
+    for (int i = 0; i < booking.getQuantity(); i++) {
+        String ticketCode = "TK" + booking.getId() + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+
+        Ticket ticket = Ticket.builder()
+                .booking(booking)
+                .schedule(booking.getSchedule())
+                .zone(booking.getZone())
+                .ticketCode(ticketCode)
+                .qrCode(ticketCode)
+                .status(TicketStatus.VALID)
+                .build();
+
+        ticketRepository.save(ticket);
+    }
+}
+@Transactional
+public List<TicketResponse> getTicketsByBookingId(Long bookingId) {
+    return ticketRepository.findByBookingId(bookingId)
+            .stream()
+            .map(ticket -> TicketResponse.builder()
+                    .ticketId(ticket.getId())
+                    .ticketCode(ticket.getTicketCode())
+                    .qrCode(ticket.getQrCode())
+                    .zoneName(ticket.getZone() != null ? ticket.getZone().getName() : "")
+                    .build())
+            .toList();
+}
+
 }   
