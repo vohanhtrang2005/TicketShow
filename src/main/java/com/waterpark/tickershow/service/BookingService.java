@@ -29,6 +29,7 @@ import com.waterpark.tickershow.repository.ZoneRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.UUID;
 
 @Service
@@ -188,7 +189,8 @@ zoneRepository.save(zone);
 
 
 @Transactional
-public void generateTickets(Booking booking) {
+public List<Ticket> generateTickets(Booking booking) {
+    List<Ticket> tickets = new ArrayList<>();
     for (int i = 0; i < booking.getQuantity(); i++) {
         String ticketCode = "TK" + booking.getId() + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
@@ -201,8 +203,10 @@ public void generateTickets(Booking booking) {
                 .status(TicketStatus.VALID)
                 .build();
 
-        ticketRepository.save(ticket);
+        
+        tickets.add(ticketRepository.save(ticket));
     }
+    return tickets;
 }
 @Transactional
 public List<TicketResponse> getTicketsByBookingId(Long bookingId) {

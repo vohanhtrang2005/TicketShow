@@ -19,18 +19,23 @@ import com.waterpark.tickershow.entity.Zone;
 import com.waterpark.tickershow.repository.ZoneRepository;
 import jakarta.transaction.Transactional;
 
+
+import java.util.List;
+import com.waterpark.tickershow.entity.Ticket;
 @Service
 public class SepayWebhookService {
 private final BookingService bookingService;
+private final EmailService emailService;
 private final ZoneRepository zoneRepository;
     private final BookingRepository bookingRepository;
     private final PaymentRepository paymentRepository;
 
-    public SepayWebhookService(ZoneRepository zoneRepository, BookingRepository bookingRepository, PaymentRepository paymentRepository, BookingService bookingService) {
+    public SepayWebhookService(ZoneRepository zoneRepository, BookingRepository bookingRepository, PaymentRepository paymentRepository, BookingService bookingService, EmailService emailService) {
         this.zoneRepository = zoneRepository;
         this.bookingRepository = bookingRepository;
         this.paymentRepository = paymentRepository;
         this.bookingService = bookingService;
+        this.emailService = emailService;
     }
 
     private Long extractBookingId(String content) {
@@ -115,7 +120,8 @@ private final ZoneRepository zoneRepository;
         booking.setStatus(BookingStatus.CONFIRMED);
         booking.setPaymentStatus(PaymentStatus.SUCCESS);
         bookingRepository.save(booking);
-        bookingService.generateTickets(booking);
+        List<Ticket> tickets = bookingService.generateTickets(booking);
+       
 
         Payment payment = new Payment();
         payment.setBooking(booking);
@@ -126,6 +132,7 @@ private final ZoneRepository zoneRepository;
         payment.setPaidAt(LocalDateTime.now());
 
         paymentRepository.save(payment);
+         emailService.sendTicketsEmail(booking, tickets);
 
         System.out.println("Payment confirmed for booking ID: " + bookingId);
         return ApiResponse.success("Thanh toan thanh cong", null);
