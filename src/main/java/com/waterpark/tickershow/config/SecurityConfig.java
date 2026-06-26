@@ -62,7 +62,20 @@ public class SecurityConfig {
 
                 // ── Auth ──────────────────────────────────────────────────────────
                 .requestMatchers("/auth/**").permitAll()
-                
+
+                // ── WebSocket / SockJS - PHAI permit de handshake khong bi chan ──
+                // Ly do: SockJS gui nhieu HTTP sub-request khi thiet lap ket noi:
+                //   GET /ws/info                           <- kiem tra kha nang server
+                //   GET /ws/{server}/{session}/websocket   <- upgrade WebSocket
+                // Browser WebSocket API khong ho tro gui custom header (JWT) trong
+                // qua trinh handshake, nen neu de Spring Security chan se bi 401.
+                // Noi dung STOMP ben trong WebSocket van duoc kiem soat rieng.
+                .requestMatchers("/ws/**").permitAll()
+
+                // ── Uploads ───────────────────────────────────────────────────────
+                .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/uploads/show-images").hasAnyRole("OPERATOR", "ADMIN")
+
                 // ── Show Types (read-only, public) ────────────────────────────────
                 .requestMatchers(HttpMethod.GET, "/show-types").permitAll()
 
@@ -117,10 +130,11 @@ public class SecurityConfig {
                 // ── Role & Permission — ADMIN only ────────────────────────────────
                 .requestMatchers("/roles/**").hasRole("ADMIN")
                 .requestMatchers("/permissions/**").hasRole("ADMIN")
-//
 
-        .requestMatchers(HttpMethod.POST, "/webhooks/sepay").permitAll()
-                    // Everything else requires authentication
+                // ── Webhooks ──────────────────────────────────────────────────────
+                .requestMatchers(HttpMethod.POST, "/webhooks/sepay").permitAll()
+
+                // Everything else requires authentication
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

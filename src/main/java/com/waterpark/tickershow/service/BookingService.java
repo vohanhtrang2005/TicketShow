@@ -25,7 +25,9 @@ import com.waterpark.tickershow.repository.ScheduleZonePriceRepository;
 import com.waterpark.tickershow.repository.TicketRepository;
 import com.waterpark.tickershow.repository.UserRepository;
 import com.waterpark.tickershow.repository.ZoneRepository;
-
+import com.waterpark.tickershow.entity.Payment;
+import com.waterpark.tickershow.enums.PaymentMethod;
+import com.waterpark.tickershow.repository.PaymentRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -41,13 +43,15 @@ public class BookingService {
 private final ScheduleZonePriceRepository scheduleZonePriceRepository;
 private final UserRepository userRepository;
 private final TicketRepository ticketRepository;
+private final PaymentRepository paymentRepository;
+private final EmailService emailService;
     public BookingService(
             BookingRepository bookingRepository,
             ScheduleRepository scheduleRepository,
             ZoneRepository zoneRepository,
             ScheduleZonePriceRepository scheduleZonePriceRepository,
             UserRepository userRepository,
-            TicketRepository ticketRepository
+            TicketRepository ticketRepository,PaymentRepository paymentRepository,EmailService emailService
     ) {
         this.bookingRepository = bookingRepository;
         this.scheduleRepository = scheduleRepository;
@@ -55,6 +59,8 @@ private final TicketRepository ticketRepository;
         this.scheduleZonePriceRepository = scheduleZonePriceRepository;
         this.userRepository = userRepository;
         this.ticketRepository = ticketRepository;
+        this.paymentRepository = paymentRepository;
+        this.emailService = emailService;
     }
 
     @Transactional
@@ -94,28 +100,63 @@ BigDecimal totalAmount = scheduleZonePrice.getPrice()
 booking.setReceiverEmail(request.getCustomerEmail());
 booking.setReceiverPhone(request.getCustomerPhone());
         booking.setTotalAmount(totalAmount);
-        booking.setStatus(BookingStatus.PENDING);
-        booking.setPaymentStatus(PaymentStatus.PENDING);
+       // booking.setStatus(BookingStatus.PENDING);
+       // booking.setPaymentStatus(PaymentStatus.PENDING);
         booking.setCreatedAt(LocalDateTime.now());
-        booking.setExpiredAt(LocalDateTime.now().plusMinutes(10));
+        //booking.setExpiredAt(LocalDateTime.now().plusMinutes(10));
 
 
 
         booking.setCustomer(currentUser);
         booking.setUnitPrice(scheduleZonePrice.getPrice());
+        boolean isFreeBooking = totalAmount.compareTo(BigDecimal.ZERO) == 0;
 
-        booking = bookingRepository.save(booking);
+if (isFreeBooking) {
+    booking.setStatus(BookingStatus.CONFIRMED);
+    booking.setPaymentStatus(PaymentStatus.SUCCESS);
+    booking.setExpiredAt(null);
+} else {
+    booking.setStatus(BookingStatus.PENDING);
+    booking.setPaymentStatus(PaymentStatus.PENDING);
+    booking.setExpiredAt(LocalDateTime.now().plusMinutes(10));
+}
 
-        String qrCodeUrl = generateQrCodeUrl(booking);
+      booking = bookingRepository.save(booking);
 
-        return new BookingResponse(
-                booking.getId(),
-                booking.getTotalAmount(),
-                booking.getStatus(),
-                booking.getPaymentStatus(),
-                booking.getExpiredAt(),
-                qrCodeUrl
-        );
+if (isFreeBooking) {
+    List<Ticket> tickets = generateTickets(booking);
+
+    Payment payment = new Payment();
+    payment.setBooking(booking);
+    payment.setAmount(BigDecimal.ZERO);
+    payment.setMethod(PaymentMethod.CASH);
+    payment.setStatus(PaymentStatus.SUCCESS);
+    payment.setTransactionCode("FREE-" + booking.getId());
+    payment.setPaidAt(LocalDateTime.now());
+    paymentRepository.save(payment);
+
+    emailService.sendTicketsEmail(booking, tickets);
+
+    return new BookingResponse(
+            booking.getId(),
+            booking.getTotalAmount(),
+            booking.getStatus(),
+            booking.getPaymentStatus(),
+            booking.getExpiredAt(),
+            null
+    );
+}
+
+String qrCodeUrl = generateQrCodeUrl(booking);
+
+return new BookingResponse(
+        booking.getId(),
+        booking.getTotalAmount(),
+        booking.getStatus(),
+        booking.getPaymentStatus(),
+        booking.getExpiredAt(),
+        qrCodeUrl
+);
     }
 
     private void validateRequest(BookingRequest request) {
@@ -166,8 +207,9 @@ public BookingResponse findBooking(Long bookingId) {
     Booking booking = bookingRepository.findById(bookingId)
             .orElseThrow(() -> new RuntimeException("Không tìm thấy booking"));
 
-    if (booking.getStatus() == BookingStatus.PENDING
-            && booking.getExpiredAt().isBefore(LocalDateTime.now())) {
+   if (booking.getStatus() == BookingStatus.PENDING
+        && booking.getExpiredAt() != null
+        && booking.getExpiredAt().isBefore(LocalDateTime.now())) { 
 
         booking.setStatus(BookingStatus.EXPIRED);
     booking.setPaymentStatus(PaymentStatus.FAILED);
@@ -177,14 +219,17 @@ zoneRepository.save(zone);
         bookingRepository.save(booking);
     }
 
+    String qrCodeUrl = booking.getTotalAmount().compareTo(BigDecimal.ZERO) == 0
+        || booking.getStatus() == BookingStatus.CONFIRMED
+        ? null
+        : generateQrCodeUrl(booking);
     return new BookingResponse(
          booking.getId(),
                 booking.getTotalAmount(),
                 booking.getStatus(),
                 booking.getPaymentStatus(),
                 booking.getExpiredAt(),
-               generateQrCodeUrl(booking)
-    );
+                qrCodeUrl);
 }
 
 
